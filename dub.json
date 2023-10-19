@@ -1,0 +1,9 @@
+{
+	"authors": [
+		"Robert Schadek"
+	],
+	"copyright": "Copyright © 2023, Robert Schadek",
+	"description": "A small string optimized ref counted string",
+	"license": "LGPL3",
+	"name": "rcstring2"
+}
