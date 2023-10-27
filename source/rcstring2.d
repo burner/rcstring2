@@ -1,6 +1,9 @@
 module rcstring2;
 
-import std.stdio;
+version(unittest) {
+	import std.stdio;
+	import std.format;
+}
 
 import core.memory : GC;
 
@@ -38,7 +41,6 @@ public struct String {
 		if(n.length > SmallStringMaxSize) {
 			this.impl.ptr = n.impl.ptr;
 			this.impl.ptr.refCnt++;
-			writeln(__LINE__);
 		} else {
 			this.impl.small = n.impl.small;
 		}
@@ -156,6 +158,10 @@ public struct String {
 		return this.getData() == s;
 	}
 
+	StringWriter getWriter() @system {
+		return StringWriter(&this);
+	}
+
 	private void realloc(const size_t newLen) @trusted {
 		if(this.theLength < SmallStringMaxSize) {
 			this.allocate(newLen);
@@ -168,6 +174,14 @@ public struct String {
 		this.impl.ptr = cast(PayloadHeap*)GC.malloc(PayloadHeap.sizeof);
 		this.impl.ptr.ptr = cast(char*)GC.malloc(newLen);
 		this.impl.ptr.refCnt = 1;
+	}
+}
+
+struct StringWriter {
+	String* buf;
+
+	void put(const(char)[] data) @system {
+		(*buf) ~= cast(string)data;
 	}
 }
 
@@ -259,4 +273,20 @@ unittest {
 	auto t = String("Hello World");
 	assert(s == t);
 	assert(t == s);
+}
+
+unittest {
+	String buf;
+	auto writer = buf.getWriter();
+	formattedWrite(writer, "%s", "Hello");
+	assert(buf == "Hello", buf.getData());
+}
+
+unittest {
+	String buf;
+	auto writer = buf.getWriter();
+	foreach(_; 0 .. 100) {
+		formattedWrite(writer, "%s", "Hello");
+	}
+	assert(buf.length == 500);
 }
