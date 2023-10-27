@@ -1,25 +1,89 @@
 module rcstring2;
 
 version(unittest) {
-	import std.stdio;
 	import std.format;
 }
 
 import core.memory : GC;
 
-private struct PayloadHeap {
-	long refCnt;
-	char* ptr;
-}
+/** String is a reference counted, small string optimized string library.
 
-enum SmallStringMaxSize = 56;
+D's in-build string type is one of its biggest strengths, but intensive use
+can put a lot of pressure on the garbage collector and ultimately slow
+programs down.
 
-private union Payload {
-	char[SmallStringMaxSize] small;
-	PayloadHeap* ptr;
+This library and its String type tries to address this.
+
+The String type stores strings with up to and including 56 char's in a static
+array.
+This is what is called a small string optimization.
+The idea here is that most strings handled by programs are comparatively
+small.
+The size is chosen such one String instance fits into the most common Level 1
+CPU cache size of 64 bytes.
+
+If the stored data exceeds 56 char's the String type will allocate storage on
+the heap and deallocate it when the last reference to it goes out of scope.
+
+As D offers much flexibility there will always be memory safety holes.
+That being said, that one of the design goals of this String type to not have
+footguns when the user uses the type sensible.
+
+The gist of it is. DO NOT TAKE THE ADDRESS OF String OR ANY OF IT MEMBERS OR
+RETURNED VALUES.
+
+If you stick to this, you should be fine.
+
+String pretends to be @safe, it is not!
+The way things are, it has to pretend to be to be usable in quote on quote
+normal D code.
+Again, to not use the unary ampersand & operator to get the address of data
+linked to a String instance.
+
+The String type does generally not work at compile time (CT), as manual memory
+management is not really a thing at CT.
+*/
+
+/// ditto
+unittest {
+	//
+	// Normal String usage
+	//
+	String s = "Hello World";
+	assert(s.length == 11);
+	assert(s.empty == false);
+	assert(s == s);
+	assert(s == "Hello World");
+
+	assert(s[0] == 'H');
+
+	string dStr = s.toString();
+	assert(dStr == "Hello World");
+
+	String s2 = s[6 .. 11];
+	assert(s2 == "World");
+
+	String s3;
+	s3 ~= "Hello";
+	s3 ~= " ";
+	s3 ~= "World";
+	assert(s3 == s);
+
+	String s4 = s ~ " " ~ s3;
+	assert(s4 == "Hello World Hello World");
+
+	//
+	// getWriter returns a voldemort type that works with
+	// std.format.formattedWrite
+	//
+	String buffer;
+	auto writer = buffer.getWriter();
+	std.format.formattedWrite(writer, "%s %s", "Hello", "World");
+	assert(buffer == "Hello World");
 }
 
 public struct String {
+@safe:
 	Payload impl;
 	private uint theLength;
 
@@ -27,7 +91,7 @@ public struct String {
 		return this.theLength;
 	}
 
-	this(string input) {
+	this(string input) @trusted {
 		if(input.length > SmallStringMaxSize) {
 			this.allocate(input.length);
 			this.impl.ptr.ptr[0 .. input.length] = cast(char[])input[];
@@ -37,7 +101,7 @@ public struct String {
 		this.theLength = cast(uint)input.length;
 	}
 
-	this(ref return scope String n) {
+	this(ref return scope String n) @trusted {
 		if(n.length > SmallStringMaxSize) {
 			this.impl.ptr = n.impl.ptr;
 			this.impl.ptr.refCnt++;
@@ -63,18 +127,19 @@ public struct String {
 	}
 
 	version(unittest) {
-		PayloadHeap* getPayload() {
+		PayloadHeap* getPayload() @trusted {
 			return this.theLength < SmallStringMaxSize
 				? null
 				: this.impl.ptr;
 		}
 	}
 
-	string getData() const @system {
-		return cast(string)(this.theLength < SmallStringMaxSize
-			? this.impl.small[0 .. this.theLength]
-			: this.impl.ptr.ptr[0 .. this.theLength]
-		);
+	char opIndex(size_t idx) const {
+		if(idx > this.length) {
+			throw new Exception("The index must not be greater than "
+					~ "the length of the String to slice");
+		}
+		return this.getData()[idx];
 	}
 
 	String opSlice(size_t low, size_t high) {
@@ -112,7 +177,7 @@ public struct String {
 				ret.impl.small[this.theLength .. newLen] = cast(char[])other.getData();
 			} else {
 				ret.allocate(newLen);	
-				ret.impl.ptr.ptr[0 .. this.theLength] = cast(char[])this.impl.getData();
+				ret.impl.ptr.ptr[0 .. this.theLength] = cast(char[])this.getData();
 				ret.impl.ptr.ptr[this.theLength .. newLen] = cast(char[])other.getData();
 			}
 		}
@@ -158,8 +223,20 @@ public struct String {
 		return this.getData() == s;
 	}
 
-	StringWriter getWriter() @system {
+	auto getWriter() {
+		struct StringWriter {
+			String* buf;
+		
+			void put(const(char)[] data) @system {
+				(*buf) ~= cast(string)data;
+			}
+		}
+
 		return StringWriter(&this);
+	}
+
+	string toString() const {
+		return this.getData().idup();
 	}
 
 	private void realloc(const size_t newLen) @trusted {
@@ -175,14 +252,25 @@ public struct String {
 		this.impl.ptr.ptr = cast(char*)GC.malloc(newLen);
 		this.impl.ptr.refCnt = 1;
 	}
+
+	private string getData() const @trusted {
+		return cast(string)(this.theLength < SmallStringMaxSize
+			? this.impl.small[0 .. this.theLength]
+			: this.impl.ptr.ptr[0 .. this.theLength]
+		);
+	}
 }
 
-struct StringWriter {
-	String* buf;
+private struct PayloadHeap {
+	long refCnt;
+	char* ptr;
+}
 
-	void put(const(char)[] data) @system {
-		(*buf) ~= cast(string)data;
-	}
+enum SmallStringMaxSize = 56;
+
+private union Payload {
+	char[SmallStringMaxSize] small;
+	PayloadHeap* ptr;
 }
 
 unittest {
@@ -223,6 +311,14 @@ unittest {
 	String a;
 	a = a;
 	a = String("Hello World");
+}
+
+unittest {
+	string s = "Hello World";
+	String a = String(s);
+	foreach(idx, char c; s) {
+		assert(a[idx] == c);
+	}
 }
 
 unittest {
@@ -289,4 +385,10 @@ unittest {
 		formattedWrite(writer, "%s", "Hello");
 	}
 	assert(buf.length == 500);
+}
+
+unittest {
+	auto s = String("Hello World");
+	string ss = s.toString();
+	assert(ss == "Hello World");
 }
