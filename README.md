@@ -1,4 +1,4 @@
-# String is a reference counted, small string optimized string library.
+# String is a reference counted, small string optimized string library for the dlang
 
 D's in-build string type is one of its biggest strengths, but intensive use
 can put a lot of pressure on the garbage collector and ultimately slow
