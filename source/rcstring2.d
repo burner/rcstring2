@@ -68,11 +68,23 @@ public struct String {
 		}
 	}
 
-	string getData() @system {
+	string getData() const @system {
 		return cast(string)(this.theLength < SmallStringMaxSize
 			? this.impl.small[0 .. this.theLength]
 			: this.impl.ptr.ptr[0 .. this.theLength]
 		);
+	}
+
+	String opSlice(size_t low, size_t high) {
+		if(low > high) {
+			throw new Exception("The low slice index must not be greater than "
+					~ "the high slice index");
+		}
+		if(high > this.length) {
+			throw new Exception("The high slice index must not be greater than "
+					~ "the length of the String to slice");
+		}
+		return String(this.getData()[low .. high]);
 	}
 
 	String opBinary(string op,S)(S other) @trusted
@@ -134,6 +146,14 @@ public struct String {
 		}
 
 		this.theLength = cast(uint)newLen;
+	}
+
+	bool opEquals(string s) const {
+		return this.getData() == s;
+	}
+
+	bool opEquals(const ref String s) const {
+		return this.getData() == s;
 	}
 
 	private void realloc(const size_t newLen) @trusted {
@@ -218,4 +238,25 @@ unittest {
 	auto t = String("Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World");
 
 	fun(t);
+}
+
+unittest {
+	auto t = String("Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World");
+
+	String s1 = t[12 .. 17];
+	assert(s1 == "Hello");
+
+	auto s = String("Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World");
+	assert(s == t);
+	assert(t == s);
+
+	assert(s1 != t);
+	assert(t != s1);
+}
+
+unittest {
+	auto s = String("Hello World");
+	auto t = String("Hello World");
+	assert(s == t);
+	assert(t == s);
 }
