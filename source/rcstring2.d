@@ -87,10 +87,6 @@ public struct String {
 	Payload impl;
 	private uint theLength;
 
-	@property uint length() const @safe {
-		return this.theLength;
-	}
-
 	this(string input) @trusted {
 		if(input.length > SmallStringMaxSize) {
 			this.allocate(input.length);
@@ -120,6 +116,10 @@ public struct String {
 				GC.free(this.impl.ptr);
 			}
 		}
+	}
+
+	@property uint length() const @safe {
+		return this.theLength;
 	}
 
 	@property bool empty() const nothrow {
@@ -190,11 +190,11 @@ public struct String {
 	{
 		const newLen = this.theLength + other.length;
 
-		if(newLen > SmallStringMaxSize && this.theLength < SmallStringMaxSize) {
+		if(newLen >= SmallStringMaxSize && this.theLength < SmallStringMaxSize) {
 			char[SmallStringMaxSize] copy = this.impl.small[];
 			this.allocate(newLen);
 			this.impl.ptr.ptr[0 .. this.theLength] = copy[0 .. this.theLength];
-		} else if(newLen > SmallStringMaxSize && this.theLength > SmallStringMaxSize) {
+		} else if(newLen >= SmallStringMaxSize && this.theLength > SmallStringMaxSize) {
 			this.realloc(newLen);
 		}
 
@@ -391,4 +391,14 @@ unittest {
 	auto s = String("Hello World");
 	string ss = s.toString();
 	assert(ss == "Hello World");
+}
+
+unittest {
+	String buf;
+	auto writer = buf.getWriter();
+	formattedWrite(writer, "%128s", "Hello");
+	String len;
+	auto w2 = len.getWriter();
+	formattedWrite(w2, "%s", buf.length);
+	assert(buf.length == 128, len.getData());
 }
