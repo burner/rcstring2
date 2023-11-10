@@ -24,7 +24,7 @@ jobs:
           - 'dmd-latest'
           - 'ldc-latest'
           - 'dmd-beta'
-           - 'ldc-beta' # the tests crash
+          - 'ldc-beta' # the tests crash
     steps:
     - uses: actions/checkout@v2
       with:
